@@ -4,7 +4,7 @@ import './globals.css';
 import MUIProvider from './mui-provider'; // Importa el componente que creamos arriba
 
 export const metadata: Metadata = {
-  title: 'Santa Deploy 🎅',
+  title: 'Te voy a cambiar el nombre',
   description: 'Conectando UIO & GYE',
 };
 

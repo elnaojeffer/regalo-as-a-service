@@ -17,85 +17,127 @@ import {
   Divider,
   Paper,
   CircularProgress,
+  TextField,
 } from "@mui/material";
+// ✅ CORRECCIÓN: Usamos Grid v2 explícitamente
+import Grid from "@mui/material/Grid";
 import {
   AutoFixHigh,
   WarningAmber,
   ArrowForward,
   Security,
   AdminPanelSettings,
+  Save,
+  AccessTime,
 } from "@mui/icons-material";
-
-const ADMIN_EMAIL = "jpalmacoloma@gmail.com";
 
 export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [matches, setMatches] = useState<any[]>([]);
+  const [currentAdminEmail, setCurrentAdminEmail] = useState("");
 
-  // 1. Verificación de Seguridad (Client Side)
+  // Estados para el formulario de configuración
+  const [formDateSorteo, setFormDateSorteo] = useState("");
+  const [formDateIntercambio, setFormDateIntercambio] = useState("");
+  const [formAdminEmail, setFormAdminEmail] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  // 1. SEGURIDAD Y CARGA
   useEffect(() => {
-    const checkUser = async () => {
+    const init = async () => {
+      // A. Verificar usuario actual
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user || user.email !== ADMIN_EMAIL) {
-        // Si no es el admin, lo sacamos
-        router.push("/dashboard");
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
+
+      if (!user) {
+        router.push("/");
+        return;
       }
+
+      // B. Traer configuración real
+      const { data: configData } = await supabase.from("config").select("*");
+
+      let realAdminEmail = "";
+      if (configData) {
+        const adminCfg = configData.find((c) => c.key === "admin_email");
+        const sorteoCfg = configData.find((c) => c.key === "fecha_sorteo");
+        const intercambioCfg = configData.find(
+          (c) => c.key === "fecha_intercambio"
+        );
+
+        if (adminCfg) {
+          realAdminEmail = adminCfg.value;
+          setFormAdminEmail(adminCfg.value);
+        }
+        if (sorteoCfg) setFormDateSorteo(sorteoCfg.value);
+        if (intercambioCfg) setFormDateIntercambio(intercambioCfg.value);
+      }
+
+      setCurrentAdminEmail(realAdminEmail || "No configurado");
+
+      // C. Validar acceso
+      if (user.email !== realAdminEmail) {
+        router.push("/dashboard");
+        return;
+      }
+
+      // D. Cargar logs
+      fetchMatches();
     };
-    checkUser();
+
+    init();
   }, [router]);
 
-  // 2. Cargar datos
-  useEffect(() => {
-    const fetchMatches = async () => {
-      console.log("Iniciando fetch de matches...");
-
-      // Intentamos traer los datos
-      const { data, error } = await supabase.from("matches").select(`
-          id,
-          created_at,
+  const fetchMatches = async () => {
+    const { data } = await supabase.from("matches").select(`
+          id, created_at,
           santa:santa_id ( full_name ),
           recipient:recipient_id ( full_name )
         `);
+    if (data) setMatches(data);
+    setFetching(false);
+  };
 
-      if (error) {
-        console.error("❌ Error de Supabase:", error.message);
-        alert("Error cargando tabla: " + error.message);
-      }
+  // Guardar Configuración en BD
+  const handleSaveConfig = async () => {
+    if (!confirm("¿Actualizar la configuración del sistema?")) return;
+    setSavingConfig(true);
 
-      if (data) {
-        console.log("✅ Datos recibidos:", data);
-        setMatches(data);
-      }
+    const updates = [
+      { key: "admin_email", value: formAdminEmail },
+      { key: "fecha_sorteo", value: formDateSorteo },
+      { key: "fecha_intercambio", value: formDateIntercambio },
+    ];
 
-      setFetching(false);
-    };
+    const { error } = await supabase.from("config").upsert(updates);
 
-    fetchMatches();
-  }, []);
+    if (error) alert("Error al guardar: " + error.message);
+    else {
+      alert("¡Configuración actualizada!");
+      setCurrentAdminEmail(formAdminEmail);
+      window.location.reload();
+    }
+    setSavingConfig(false);
+  };
 
   const handleRunSorteo = async () => {
-    if (
-      !confirm(
-        "⚠️ ¿ESTÁS SEGURO? Esto generará nuevos pares y enviará correos."
-      )
-    )
-      return;
+    if (!confirm("⚠️ ¿Ejecutar sorteo? Se enviarán correos a todos.")) return;
     setLoading(true);
     try {
       const response = await fetch("/api/sorteo", {
         method: "POST",
         headers: {
-          "x-admin-secret": prompt("Ingresa la SERVICE ROLE KEY:") || "",
+          "x-admin-secret": prompt("Clave Maestra (Service Role):") || "",
         },
       });
       const data = await response.json();
       if (!response.ok) alert("Error: " + (data.error || "Desconocido"));
       else {
-        alert("¡Sorteo realizado! Recargando...");
+        alert("¡Sorteo exitoso!");
         window.location.reload();
       }
     } catch (e: any) {
@@ -120,7 +162,7 @@ export default function AdminPage() {
         <Box textAlign="center" mb={6}>
           <Chip
             icon={<AdminPanelSettings />}
-            label="ADMINISTRATOR MODE"
+            label="ADMIN MODE"
             sx={{
               bgcolor: "#FFD700",
               color: "#000",
@@ -132,27 +174,107 @@ export default function AdminPage() {
             Panel RaaS
           </Typography>
           <Typography variant="subtitle1" sx={{ color: "gray" }}>
-            {ADMIN_EMAIL}
+            Admin: <span style={{ color: "#E1BEE7" }}>{currentAdminEmail}</span>
           </Typography>
         </Box>
 
-        {/* ACTION CARD */}
+        {/* 1. CONFIGURACIÓN DEL SISTEMA */}
+        <Card
+          sx={{
+            bgcolor: "rgba(255, 255, 255, 0.05)",
+            border: "1px solid #444",
+            mb: 4,
+          }}
+        >
+          <CardContent sx={{ p: 4 }}>
+            <Stack direction="row" alignItems="center" gap={2} mb={3}>
+              <AccessTime sx={{ color: "#E1BEE7", fontSize: 30 }} />
+              <Typography variant="h6" color="white" fontWeight="bold">
+                Configuración del Evento
+              </Typography>
+            </Stack>
+
+            {/* ✅ CORRECCIÓN: Grid V2 */}
+            <Grid container spacing={3}>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  fullWidth
+                  label="Correo del Administrador"
+                  variant="filled"
+                  value={formAdminEmail}
+                  onChange={(e) => setFormAdminEmail(e.target.value)}
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.1)",
+                    input: { color: "white" },
+                    label: { color: "gray" },
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Fecha Sorteo (ISO)"
+                  variant="filled"
+                  placeholder="2025-12-05T15:00:00"
+                  value={formDateSorteo}
+                  onChange={(e) => setFormDateSorteo(e.target.value)}
+                  helperText="Formato: YYYY-MM-DDTHH:MM:SS"
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.1)",
+                    input: { color: "white" },
+                    label: { color: "gray" },
+                    ".MuiFormHelperText-root": { color: "gray" },
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Fecha Intercambio (ISO)"
+                  variant="filled"
+                  placeholder="2025-12-23T14:00:00"
+                  value={formDateIntercambio}
+                  onChange={(e) => setFormDateIntercambio(e.target.value)}
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.1)",
+                    input: { color: "white" },
+                    label: { color: "gray" },
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <Button
+                  onClick={handleSaveConfig}
+                  disabled={savingConfig}
+                  variant="contained"
+                  fullWidth
+                  startIcon={<Save />}
+                  sx={{ bgcolor: "#7B1FA2", "&:hover": { bgcolor: "#4A148C" } }}
+                >
+                  {savingConfig ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+
+        {/* 2. ZONA DE SORTEO */}
         <Card
           sx={{
             bgcolor: "rgba(30, 30, 30, 0.9)",
-            border: "1px solid #333",
+            border: "1px solid #D32F2F",
             mb: 6,
           }}
         >
           <CardContent sx={{ p: 4 }}>
             <Stack direction="row" alignItems="center" gap={2} mb={3}>
-              <WarningAmber color="warning" sx={{ fontSize: 30 }} />
+              <WarningAmber color="error" sx={{ fontSize: 30 }} />
               <Box>
                 <Typography variant="h6" color="white" fontWeight="bold">
                   Ejecutar Sorteo
                 </Typography>
                 <Typography variant="body2" color="gray">
-                  Acción irreversible. Asigna pares y envía correos.
+                  Acción irreversible. Asigna pares y envía correos masivos.
                 </Typography>
               </Box>
             </Stack>
@@ -175,27 +297,20 @@ export default function AdminPage() {
                 "&:hover": { bgcolor: "#B71C1C" },
               }}
             >
-              {loading ? "Procesando..." : "EJECUTAR SORTEO"}
+              {loading ? "Procesando..." : "EJECUTAR ALGORITMO"}
             </Button>
           </CardContent>
         </Card>
 
-        {/* LOGS */}
+        {/* 3. LOGS */}
         <Box>
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-            mb={2}
-          >
-            <Typography
-              variant="h5"
-              fontWeight="bold"
-              display="flex"
-              alignItems="center"
-              gap={1}
-            >
-              <Security color="secondary" /> Asignaciones
+          <Box display="flex" justifyContent="space-between" mb={2}>
+            <Typography variant="h5" fontWeight="bold">
+              <Security
+                color="secondary"
+                sx={{ mr: 1, verticalAlign: "bottom" }}
+              />{" "}
+              Asignaciones
             </Typography>
             <Chip
               label={`${matches.length} Registros`}
@@ -219,56 +334,38 @@ export default function AdminPage() {
               }}
             >
               <List>
-                {matches.map((match, i) => {
-                  // PROTECCIÓN CONTRA CRASHES:
-                  // Usamos ?. para acceder de forma segura. Si es null/undefined, devuelve undefined y usamos || para poner texto.
-                  // TypeScript a veces se queja de que 'santa' es array o objeto, casteamos a any para evitar lios rápidos.
-                  const santaName =
-                    (match.santa as any)?.full_name || "Desconocido (ID Error)";
-                  const recipientName =
-                    (match.recipient as any)?.full_name ||
-                    "Desconocido (ID Error)";
-
-                  return (
-                    <div key={match.id}>
-                      <ListItem sx={{ py: 2 }}>
-                        <ListItemText
-                          primary={
-                            <Box
-                              display="flex"
-                              alignItems="center"
-                              gap={2}
-                              flexWrap="wrap"
-                            >
-                              <Box sx={{ flex: 1 }}>
-                                <Typography variant="caption" color="gray">
-                                  SANTA
-                                </Typography>
-                                <Typography color="#A5D6A7" fontWeight="bold">
-                                  {santaName}
-                                </Typography>
-                              </Box>
-                              <ArrowForward sx={{ color: "gray" }} />
-                              <Box sx={{ flex: 1, textAlign: "right" }}>
-                                <Typography variant="caption" color="gray">
-                                  RECIBE
-                                </Typography>
-                                <Typography color="#FFCC80" fontWeight="bold">
-                                  {recipientName}
-                                </Typography>
-                              </Box>
+                {matches.map((m, i) => (
+                  <div key={m.id}>
+                    <ListItem sx={{ py: 2 }}>
+                      <ListItemText
+                        primary={
+                          <Box display="flex" alignItems="center" gap={2}>
+                            <Box flex={1}>
+                              <Typography variant="caption" color="gray">
+                                SANTA
+                              </Typography>
+                              <Typography color="#A5D6A7" fontWeight="bold">
+                                {(m.santa as any)?.full_name || "?"}
+                              </Typography>
                             </Box>
-                          }
-                        />
-                      </ListItem>
-                      {i < matches.length - 1 && (
-                        <Divider
-                          sx={{ borderColor: "rgba(255,255,255,0.1)" }}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
+                            <ArrowForward sx={{ color: "gray" }} />
+                            <Box flex={1} textAlign="right">
+                              <Typography variant="caption" color="gray">
+                                RECIBE
+                              </Typography>
+                              <Typography color="#FFCC80" fontWeight="bold">
+                                {(m.recipient as any)?.full_name || "?"}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                    {i < matches.length - 1 && (
+                      <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+                    )}
+                  </div>
+                ))}
               </List>
             </Paper>
           )}
