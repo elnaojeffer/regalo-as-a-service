@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { validarCedula } from "@/lib/utils"; // Asegúrate de tener src/lib/utils.ts creado
+import { validarCedula } from "@/lib/utils";
 import {
   Box,
   Card,
@@ -25,6 +25,7 @@ import {
   PersonAdd,
   Login,
   Badge,
+  CloudQueue,
 } from "@mui/icons-material";
 
 export default function LoginPage() {
@@ -32,8 +33,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Estado para evitar el "flash" del login si ya estás logueado
+  // Estado para evitar el "flash" del login
   const [checkingSession, setCheckingSession] = useState(true);
+
+  // Estado para solucionar el error de Hidratación
+  const [mounted, setMounted] = useState(false);
 
   // Estados del formulario
   const [email, setEmail] = useState("");
@@ -43,14 +47,14 @@ export default function LoginPage() {
   const [cedula, setCedula] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // 1. VERIFICAR SESIÓN Y SOLUCIONAR REFRESH TOKEN
+  // 1. VERIFICAR SESIÓN
   useEffect(() => {
-    // Marcamos que el componente está montado en el cliente
+    setMounted(true);
+
     const checkSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
 
-        // Si hay error (ej: Refresh Token Not Found), forzamos limpieza
         if (error) {
           console.warn("Sesión inválida, limpiando...", error.message);
           await supabase.auth.signOut();
@@ -64,34 +68,6 @@ export default function LoginPage() {
           setCheckingSession(false);
         }
       } catch (err) {
-        // En caso de cualquier error raro, mostramos el login
-        setCheckingSession(false);
-      }
-    };
-    checkSession();
-  }, [router]); // 1. VERIFICAR SESIÓN Y SOLUCIONAR REFRESH TOKEN
-  useEffect(() => {
-    // Marcamos que el componente está montado en el cliente
-
-    const checkSession = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-
-        // Si hay error (ej: Refresh Token Not Found), forzamos limpieza
-        if (error) {
-          console.warn("Sesión inválida, limpiando...", error.message);
-          await supabase.auth.signOut();
-          setCheckingSession(false);
-          return;
-        }
-
-        if (data.session) {
-          router.replace("/dashboard");
-        } else {
-          setCheckingSession(false);
-        }
-      } catch (err) {
-        // En caso de cualquier error raro, mostramos el login
         setCheckingSession(false);
       }
     };
@@ -99,7 +75,7 @@ export default function LoginPage() {
   }, [router]);
 
   const handleCedulaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, ""); // Solo números
+    const value = e.target.value.replace(/[^0-9]/g, "");
     if (value.length <= 10) setCedula(value);
   };
 
@@ -123,6 +99,7 @@ export default function LoginPage() {
           password,
           options: {
             data: { full_name: fullName, sede: sede, cedula: cedula },
+            // Aunque la confirmación esté off, esto asegura el flujo correcto
             emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
@@ -134,8 +111,9 @@ export default function LoginPage() {
           throw error;
         }
 
-        alert("¡Cuenta creada! Revisa tu correo para confirmar.");
-        setIsRegistering(false);
+        // --- CAMBIO: REDIRECCIÓN DIRECTA (Sin mensaje de correo) ---
+        // Al estar deshabilitada la confirmación, signUp crea la sesión automáticamente.
+        router.push("/dashboard");
       } else {
         // --- INICIO DE SESIÓN ---
         const { error } = await supabase.auth.signInWithPassword({
@@ -154,7 +132,8 @@ export default function LoginPage() {
 
   const handleClickShowPassword = () => setShowPassword((show) => !show);
 
-  // Spinner de carga inicial
+  if (!mounted) return null;
+
   if (checkingSession) {
     return (
       <Box
@@ -178,7 +157,6 @@ export default function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        // Fondo Xtrim (Morado)
         background: "linear-gradient(135deg, #4A148C 0%, #6A1B9A 100%)",
         py: 4,
       }}
@@ -226,7 +204,6 @@ export default function LoginPage() {
               noValidate
               sx={{ mt: 1 }}
             >
-              {/* Campos extra para Registro */}
               <Collapse in={isRegistering}>
                 <Box
                   sx={{
