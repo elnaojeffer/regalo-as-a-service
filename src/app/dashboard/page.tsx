@@ -24,7 +24,6 @@ import {
   Avatar,
   Paper,
   Stack,
-  Divider,
   Alert,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
@@ -64,7 +63,6 @@ interface GroupedWishes {
   };
 }
 
-// Interfaz para la asignación (Tu amigo secreto)
 interface Assignment {
   recipient: {
     full_name: string;
@@ -77,13 +75,14 @@ export default function DashboardPage() {
   const router = useRouter();
 
   // Estados
+  const [mounted, setMounted] = useState(false); // Para evitar error de hidratación
   const [wishes, setWishes] = useState<WishItem[]>([]);
   const [newWish, setNewWish] = useState("");
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [configAdminEmail, setConfigAdminEmail] = useState("");
 
-  // Estado de Asignación (Si ya hubo sorteo)
+  // Estado de Asignación
   const [myAssignment, setMyAssignment] = useState<Assignment | null>(null);
 
   // Fechas y Timers
@@ -107,6 +106,8 @@ export default function DashboardPage() {
 
   // --- 1. CARGA INICIAL ---
   useEffect(() => {
+    setMounted(true); // Marca que ya estamos en el cliente
+
     const initData = async () => {
       try {
         const {
@@ -134,28 +135,18 @@ export default function DashboardPage() {
             setDateIntercambio(new Date(intercambioCfg.value));
         }
 
-        // Cargar Deseos Generales
         await fetchWishes();
 
-        // INTENTAR CARGAR MI ASIGNACIÓN (Si el sorteo ya pasó)
-        // Buscamos en la tabla matches donde yo soy el santa
+        // Cargar Asignación
         const { data: matchData } = await supabase
           .from("matches")
           .select(
-            `
-            recipient:recipient_id (
-              full_name,
-              sede,
-              wishes ( description )
-            )
-          `
+            `recipient:recipient_id ( full_name, sede, wishes ( description ) )`
           )
           .eq("santa_id", user.id)
           .single();
 
-        if (matchData) {
-          setMyAssignment(matchData as any); // Guardamos la asignación si existe
-        }
+        if (matchData) setMyAssignment(matchData as any);
 
         setLoading(false);
       } catch (error) {
@@ -166,14 +157,17 @@ export default function DashboardPage() {
     initData();
   }, [router]);
 
-  // --- 2. TIMER LOOP ---
+  // --- 2. TIMER LOOP (Se ejecuta cada segundo) ---
   useEffect(() => {
+    if (!mounted) return;
+
     const timer = setInterval(() => {
       setTimeSorteo(calculateTimeLeft(dateSorteo));
       setTimeIntercambio(calculateTimeLeft(dateIntercambio));
     }, 1000);
+
     return () => clearInterval(timer);
-  }, [dateSorteo, dateIntercambio]);
+  }, [dateSorteo, dateIntercambio, mounted]);
 
   const calculateTimeLeft = (target: Date) => {
     const now = new Date();
@@ -197,7 +191,6 @@ export default function DashboardPage() {
     if (data) setWishes(data);
   };
 
-  // --- HANDLERS ---
   const handleAddWish = async () => {
     if (!newWish.trim() || !currentUser) return;
     const myCount = wishes.filter((w) => w.user_id === currentUser.id).length;
@@ -231,18 +224,14 @@ export default function DashboardPage() {
     router.push("/");
   };
 
-  // --- AGRUPACIÓN ---
   const myWishes = useMemo(
     () => wishes.filter((w) => w.user_id === currentUser?.id),
     [wishes, currentUser]
   );
-
   const groupedOtherWishes = useMemo(() => {
     const groups: GroupedWishes = {};
     wishes.forEach((wish) => {
-      // Excluirme a mí mismo de la lista general para no confundir
       if (wish.user_id === currentUser?.id) return;
-
       if (!groups[wish.user_id]) {
         groups[wish.user_id] = {
           name: wish.profiles.full_name,
@@ -256,8 +245,12 @@ export default function DashboardPage() {
   }, [wishes, currentUser]);
 
   const TimeDigit = ({ val, label }: { val: number; label: string }) => (
-    <Box textAlign="center" mx={0.5}>
-      <Typography variant="h6" fontWeight="bold" sx={{ lineHeight: 1 }}>
+    <Box textAlign="center" mx={0.2}>
+      <Typography
+        variant="h6"
+        fontWeight="bold"
+        sx={{ lineHeight: 1, minWidth: "24px" }}
+      >
         {String(val).padStart(2, "0")}
       </Typography>
       <Typography variant="caption" sx={{ fontSize: "0.6rem", opacity: 0.8 }}>
@@ -266,6 +259,14 @@ export default function DashboardPage() {
     </Box>
   );
 
+  const Separator = () => (
+    <Typography variant="h6" sx={{ opacity: 0.5, mb: 1.5 }}>
+      :
+    </Typography>
+  );
+
+  // Evitar renderizado hasta que el cliente esté listo
+  if (!mounted) return null;
   if (loading) return null;
 
   return (
@@ -303,8 +304,9 @@ export default function DashboardPage() {
       </AppBar>
 
       <Container maxWidth="lg" sx={{ mt: 4, pb: 8 }}>
-        {/* TIMELINE (Igual que antes) */}
+        {/* TIMELINE */}
         <Grid container spacing={2} sx={{ mb: 6 }}>
+          {/* CARD 1: SORTEO */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Card
               elevation={3}
@@ -362,16 +364,23 @@ export default function DashboardPage() {
                       sx={{ fontWeight: "bold" }}
                     />
                   ) : (
-                    <Stack direction="row" gap={1}>
-                      <TimeDigit val={timeSorteo.days} label="d" />:
-                      <TimeDigit val={timeSorteo.hours} label="h" />:
+                    <Stack direction="row" alignItems="flex-end" gap={0.5}>
+                      <TimeDigit val={timeSorteo.days} label="d" />
+                      <Separator />
+                      <TimeDigit val={timeSorteo.hours} label="h" />
+                      <Separator />
                       <TimeDigit val={timeSorteo.minutes} label="m" />
+                      <Separator />
+                      <TimeDigit val={timeSorteo.seconds} label="s" />{" "}
+                      {/* <-- AQUI ESTABA FALTANDO */}
                     </Stack>
                   )}
                 </Box>
               </CardContent>
             </Card>
           </Grid>
+
+          {/* CARD 2: INTERCAMBIO */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Card
               elevation={3}
@@ -429,10 +438,14 @@ export default function DashboardPage() {
                       sx={{ fontWeight: "bold" }}
                     />
                   ) : (
-                    <Stack direction="row" gap={1}>
-                      <TimeDigit val={timeIntercambio.days} label="d" />:
-                      <TimeDigit val={timeIntercambio.hours} label="h" />:
+                    <Stack direction="row" alignItems="flex-end" gap={0.5}>
+                      <TimeDigit val={timeIntercambio.days} label="d" />
+                      <Separator />
+                      <TimeDigit val={timeIntercambio.hours} label="h" />
+                      <Separator />
                       <TimeDigit val={timeIntercambio.minutes} label="m" />
+                      <Separator />
+                      <TimeDigit val={timeIntercambio.seconds} label="s" />
                     </Stack>
                   )}
                 </Box>
@@ -441,7 +454,7 @@ export default function DashboardPage() {
           </Grid>
         </Grid>
 
-        {/* --- TARJETA DE MISIÓN (SOLO APARECE SI HAY SORTEO) --- */}
+        {/* TARJETA DE MISIÓN (SI YA HUBO SORTEO) */}
         {myAssignment && (
           <Box mb={6} sx={{ animation: "fadeIn 1s ease-in" }}>
             <Card
@@ -541,7 +554,7 @@ export default function DashboardPage() {
         )}
 
         <Grid container spacing={4}>
-          {/* COLUMNA IZQUIERDA: MI CARTA */}
+          {/* MI CARTA */}
           <Grid size={{ xs: 12, md: 4 }}>
             <Box sx={{ position: "sticky", top: 100 }}>
               <Card elevation={4} sx={{ borderRadius: 4, overflow: "visible" }}>
@@ -650,7 +663,7 @@ export default function DashboardPage() {
             </Box>
           </Grid>
 
-          {/* COLUMNA DERECHA: BACKLOG (CENSURADO) */}
+          {/* BACKLOG DE EQUIPO */}
           <Grid size={{ xs: 12, md: 8 }}>
             <Stack direction="row" alignItems="center" gap={1} mb={3}>
               <CloudQueue sx={{ color: "#4A148C" }} />
@@ -658,11 +671,9 @@ export default function DashboardPage() {
                 Participantes ({groupedOtherWishes.length})
               </Typography>
             </Stack>
-
             {groupedOtherWishes.length === 0 && !loading && (
               <Alert severity="info">Nadie más se ha registrado aún.</Alert>
             )}
-
             {groupedOtherWishes.map((group, i) => (
               <Accordion
                 key={i}
@@ -686,7 +697,6 @@ export default function DashboardPage() {
                   </Avatar>
                   <Box flexGrow={1}>
                     <Typography fontWeight="bold">{group.name}</Typography>
-                    {/* Indicador de cuántos deseos ha subido */}
                     <Typography variant="caption" color="text.secondary">
                       {group.wishes.length > 0
                         ? `${group.wishes.length} deseos guardados`
@@ -695,13 +705,11 @@ export default function DashboardPage() {
                   </Box>
                   <Chip label={group.sede} size="small" variant="outlined" />
                 </AccordionSummary>
-
                 <AccordionDetails sx={{ bgcolor: "#FAFAFA" }}>
                   <List>
                     {group.wishes.length > 0 ? (
                       group.wishes.map((w, idx) => (
                         <ListItem key={w.id}>
-                          {/* ÍCONO DE CANDADO PARA CENSURAR */}
                           <Lock
                             fontSize="small"
                             sx={{ mr: 2, color: "text.disabled" }}
@@ -718,7 +726,7 @@ export default function DashboardPage() {
                       ))
                     ) : (
                       <Typography variant="caption" color="text.disabled" p={2}>
-                        Este usuario aún no agrega deseos.
+                        Aún no agrega deseos.
                       </Typography>
                     )}
                   </List>

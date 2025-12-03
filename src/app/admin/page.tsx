@@ -29,6 +29,7 @@ import {
   AdminPanelSettings,
   Save,
   AccessTime,
+  ArrowBack,
 } from "@mui/icons-material";
 
 export default function AdminPage() {
@@ -158,6 +159,18 @@ export default function AdminPage() {
       }}
     >
       <Container maxWidth="md">
+        <Button
+          startIcon={<ArrowBack />}
+          onClick={() => router.push("/dashboard")}
+          sx={{
+            color: "rgba(255,255,255,0.7)",
+            mb: 2,
+            textTransform: "none",
+            "&:hover": { color: "white", bgcolor: "rgba(255,255,255,0.1)" },
+          }}
+        >
+          Volver al Dashboard
+        </Button>
         {/* HEADER */}
         <Box textAlign="center" mb={6}>
           <Chip

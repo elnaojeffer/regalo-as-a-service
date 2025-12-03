@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { validarCedula } from "@/lib/utils"; // ⚠️ Asegúrate de tener este archivo
+import { validarCedula } from "@/lib/utils"; // Asegúrate de tener src/lib/utils.ts creado
 import {
   Box,
   Card,
@@ -24,7 +24,7 @@ import {
   VisibilityOff,
   PersonAdd,
   Login,
-  Badge, // Icono para la cédula
+  Badge,
 } from "@mui/icons-material";
 
 export default function LoginPage() {
@@ -32,17 +32,34 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
+  // Estado para evitar el "flash" del login si ya estás logueado
+  const [checkingSession, setCheckingSession] = useState(true);
+
   // Estados del formulario
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [sede, setSede] = useState("UIO");
-  const [cedula, setCedula] = useState(""); // <--- NUEVO
+  const [cedula, setCedula] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Helper para solo números en la cédula
+  // 1. VERIFICAR SESIÓN AL CARGAR
+  useEffect(() => {
+    const checkSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        router.replace("/dashboard");
+      } else {
+        setCheckingSession(false);
+      }
+    };
+    checkSession();
+  }, [router]);
+
   const handleCedulaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, ""); // Solo permite números
+    const value = e.target.value.replace(/[^0-9]/g, ""); // Solo números
     if (value.length <= 10) setCedula(value);
   };
 
@@ -52,34 +69,32 @@ export default function LoginPage() {
 
     try {
       if (isRegistering) {
-        // --- VALIDACIÓN CÉDULA ---
+        // --- VALIDACIÓN ---
         if (!validarCedula(cedula)) {
           throw new Error("La cédula ingresada no es válida.");
         }
 
-        // --- LÓGICA DE REGISTRO ---
+        // --- REGISTRO ---
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            // Enviamos la cédula también
             data: { full_name: fullName, sede: sede, cedula: cedula },
             emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
 
         if (error) {
-          // Detectar duplicados de cédula
           if (error.message.includes("unique") || error.status === 422) {
             throw new Error("Esta cédula o correo ya están registrados.");
           }
           throw error;
         }
 
-        alert("¡Cuenta creada! Revisa tu correo o inicia sesión.");
+        alert("¡Cuenta creada! Revisa tu correo para confirmar.");
         setIsRegistering(false);
       } else {
-        // --- LÓGICA DE LOGIN ---
+        // --- INICIO DE SESIÓN ---
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -96,6 +111,23 @@ export default function LoginPage() {
 
   const handleClickShowPassword = () => setShowPassword((show) => !show);
 
+  // Spinner de carga inicial
+  if (checkingSession) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "#f0f2f5",
+        }}
+      >
+        <CircularProgress color="primary" />
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -103,12 +135,21 @@ export default function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(135deg, #f0f2f5 0%, #e3e8ee 100%)",
+        // Fondo Xtrim (Morado)
+        background: "linear-gradient(135deg, #4A148C 0%, #6A1B9A 100%)",
         py: 4,
       }}
     >
       <Container maxWidth="xs">
-        <Card elevation={4} sx={{ p: 2, width: "100%", borderRadius: 4 }}>
+        <Card
+          elevation={10}
+          sx={{
+            p: 3,
+            width: "100%",
+            borderRadius: 6,
+            bgcolor: "rgba(255, 255, 255, 0.98)",
+          }}
+        >
           <CardContent
             sx={{
               display: "flex",
@@ -117,6 +158,7 @@ export default function LoginPage() {
               textAlign: "center",
             }}
           >
+            {/* Header con Santa */}
             <Box mb={1}>
               <Typography
                 variant="h2"
@@ -125,23 +167,23 @@ export default function LoginPage() {
                 🎅
               </Typography>
               <Typography variant="h4" color="primary" fontWeight="bold">
-                Regalo as a Service
+                RaaS
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {isRegistering
                   ? "Únete al intercambio"
-                  : "Conectando a Xtrim UIO & GYE"}
+                  : "Regalos as a Service - Xtrim"}
               </Typography>
             </Box>
 
-            {/* FORMULARIO */}
+            {/* Formulario */}
             <Box
               component="form"
               onSubmit={handleAuth}
               noValidate
               sx={{ mt: 1 }}
             >
-              {/* CAMPOS SOLO PARA REGISTRO */}
+              {/* Campos extra para Registro */}
               <Collapse in={isRegistering}>
                 <Box
                   sx={{
@@ -160,7 +202,6 @@ export default function LoginPage() {
                     size="small"
                   />
 
-                  {/* --- CAMPO CÉDULA NUEVO --- */}
                   <TextField
                     required={isRegistering}
                     fullWidth
@@ -248,7 +289,6 @@ export default function LoginPage() {
                 )}
               </Button>
 
-              {/* TOGGLE LINK */}
               <Box sx={{ mt: 1 }}>
                 <Link
                   component="button"
@@ -256,7 +296,7 @@ export default function LoginPage() {
                   onClick={() => setIsRegistering(!isRegistering)}
                   underline="hover"
                   variant="body2"
-                  sx={{ cursor: "pointer" }}
+                  sx={{ cursor: "pointer", color: "primary.main" }}
                 >
                   {isRegistering
                     ? "¿Ya tienes cuenta? Inicia sesión aquí"
