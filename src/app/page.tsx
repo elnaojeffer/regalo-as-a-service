@@ -48,10 +48,8 @@ export default function LoginPage() {
           email,
           password,
           options: {
-            data: {
-              full_name: fullName, // Guardamos nombre en metadatos
-              sede: sede, // Guardamos sede en metadatos
-            },
+            data: { full_name: fullName, sede: sede },
+            emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
         if (error) throw error;

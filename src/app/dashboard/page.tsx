@@ -24,6 +24,7 @@ import {
   Avatar,
   Paper,
   Stack,
+  Button,
 } from "@mui/material";
 // IMPORTANTE: Usamos Grid2 para la nueva versión
 import Grid from "@mui/material/Grid";
@@ -36,6 +37,7 @@ import {
   LocationOn,
   CloudQueue,
   AccessTime,
+  Settings,
 } from "@mui/icons-material";
 import confetti from "canvas-confetti";
 import { CircularProgress } from "@mui/material";
@@ -59,7 +61,7 @@ interface GroupedWishes {
     wishes: WishItem[];
   };
 }
-
+const ADMIN_EMAIL = "jpalmacoloma@gmail.com"; // Tu correo
 export default function DashboardPage() {
   const router = useRouter();
   const [wishes, setWishes] = useState<WishItem[]>([]);
@@ -253,7 +255,7 @@ export default function DashboardPage() {
       {/* NAVBAR */}
       <AppBar position="sticky" elevation={2}>
         <Toolbar>
-          <CloudQueue sx={{ mr: 2, color: "#fff" }} /> {/* Icono Cloud */}
+          <CloudQueue sx={{ mr: 2, color: "#fff" }} />
           <Box flexGrow={1}>
             <Typography variant="h6" fontWeight="bold" sx={{ lineHeight: 1 }}>
               RaaS
@@ -262,6 +264,7 @@ export default function DashboardPage() {
               Regalos as a Service
             </Typography>
           </Box>
+
           <Typography
             variant="body2"
             sx={{
@@ -272,6 +275,25 @@ export default function DashboardPage() {
           >
             {currentUser?.user_metadata?.full_name}
           </Typography>
+
+          {/* --- BOTÓN DE ADMIN (Solo visible para ti) --- */}
+          {currentUser?.email === ADMIN_EMAIL && (
+            <Button
+              onClick={() => router.push("/admin")}
+              startIcon={<Settings />}
+              sx={{
+                color: "white",
+                borderColor: "rgba(255,255,255,0.3)",
+                mr: 1,
+                "&:hover": { bgcolor: "rgba(255,255,255,0.1)" },
+              }}
+              variant="outlined"
+              size="small"
+            >
+              Admin
+            </Button>
+          )}
+
           <IconButton onClick={handleLogout} sx={{ color: "white" }}>
             <Logout />
           </IconButton>
