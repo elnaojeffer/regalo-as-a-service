@@ -49,7 +49,7 @@ const DEFAULT_INTERCAMBIO = new Date("2025-12-23T14:00:00");
 
 interface WishItem {
   id: number;
-  description: string;
+  description: string | null; // AHORA PUEDE SER NULL (OFUSCADO)
   user_id: string;
   profiles: { full_name: string; sede: string };
   created_at: string;
@@ -75,17 +75,15 @@ export default function DashboardPage() {
   const router = useRouter();
 
   // Estados
-  const [mounted, setMounted] = useState(false); // Para evitar error de hidratación
+  const [mounted, setMounted] = useState(false);
   const [wishes, setWishes] = useState<WishItem[]>([]);
   const [newWish, setNewWish] = useState("");
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [configAdminEmail, setConfigAdminEmail] = useState("");
 
-  // Estado de Asignación
   const [myAssignment, setMyAssignment] = useState<Assignment | null>(null);
 
-  // Fechas y Timers
   const [dateSorteo, setDateSorteo] = useState<Date>(DEFAULT_SORTEO);
   const [dateIntercambio, setDateIntercambio] =
     useState<Date>(DEFAULT_INTERCAMBIO);
@@ -106,21 +104,26 @@ export default function DashboardPage() {
 
   // --- 1. CARGA INICIAL ---
   useEffect(() => {
-    setMounted(true); // Marca que ya estamos en el cliente
+    setMounted(true);
 
     const initData = async () => {
       try {
         const {
           data: { session },
+          error: sessionError,
         } = await supabase.auth.getSession();
-        if (!session) {
+
+        // Manejo de error de Refresh Token
+        if (sessionError || !session) {
+          console.warn("Sesión inválida o expirada:", sessionError?.message);
+          await supabase.auth.signOut(); // Limpiamos cookies corruptas
           router.replace("/");
           return;
         }
+
         const user = session.user;
         setCurrentUser(user);
 
-        // Cargar Config
         const { data: configData } = await supabase.from("config").select("*");
         if (configData) {
           const adminCfg = configData.find((c) => c.key === "admin_email");
@@ -137,35 +140,34 @@ export default function DashboardPage() {
 
         await fetchWishes();
 
-        // Cargar Asignación
+        // CORRECCIÓN ERROR 406: Usamos maybeSingle() en lugar de single()
+        // Esto evita el error rojo en consola cuando aún no hay sorteo.
         const { data: matchData } = await supabase
           .from("matches")
           .select(
             `recipient:recipient_id ( full_name, sede, wishes ( description ) )`
           )
           .eq("santa_id", user.id)
-          .single();
+          .maybeSingle();
 
         if (matchData) setMyAssignment(matchData as any);
 
         setLoading(false);
       } catch (error) {
-        console.error(error);
+        console.error("Error cargando dashboard:", error);
       }
     };
 
     initData();
   }, [router]);
 
-  // --- 2. TIMER LOOP (Se ejecuta cada segundo) ---
+  // --- 2. TIMER LOOP ---
   useEffect(() => {
     if (!mounted) return;
-
     const timer = setInterval(() => {
       setTimeSorteo(calculateTimeLeft(dateSorteo));
       setTimeIntercambio(calculateTimeLeft(dateIntercambio));
     }, 1000);
-
     return () => clearInterval(timer);
   }, [dateSorteo, dateIntercambio, mounted]);
 
@@ -183,9 +185,11 @@ export default function DashboardPage() {
     };
   };
 
+  // --- FETCH SEGURO ---
   const fetchWishes = async () => {
+    // 🔒 CAMBIO CLAVE: Consultamos la VISTA 'safe_wishes', no la tabla directa
     const { data } = await supabase
-      .from("wishes")
+      .from("safe_wishes")
       .select("*, profiles(full_name, sede)")
       .order("created_at", { ascending: false });
     if (data) setWishes(data);
@@ -199,6 +203,7 @@ export default function DashboardPage() {
       return;
     }
 
+    // Insertar sigue siendo en la tabla real 'wishes', la vista es solo lectura
     const { error } = await supabase.from("wishes").insert({
       user_id: currentUser.id,
       description: newWish,
@@ -228,6 +233,7 @@ export default function DashboardPage() {
     () => wishes.filter((w) => w.user_id === currentUser?.id),
     [wishes, currentUser]
   );
+
   const groupedOtherWishes = useMemo(() => {
     const groups: GroupedWishes = {};
     wishes.forEach((wish) => {
@@ -265,13 +271,11 @@ export default function DashboardPage() {
     </Typography>
   );
 
-  // Evitar renderizado hasta que el cliente esté listo
   if (!mounted) return null;
   if (loading) return null;
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#F5F5F5" }}>
-      {/* NAVBAR */}
       <AppBar position="sticky" elevation={2}>
         <Toolbar>
           <CloudQueue sx={{ mr: 2 }} />
@@ -306,7 +310,6 @@ export default function DashboardPage() {
       <Container maxWidth="lg" sx={{ mt: 4, pb: 8 }}>
         {/* TIMELINE */}
         <Grid container spacing={2} sx={{ mb: 6 }}>
-          {/* CARD 1: SORTEO */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Card
               elevation={3}
@@ -371,8 +374,7 @@ export default function DashboardPage() {
                       <Separator />
                       <TimeDigit val={timeSorteo.minutes} label="m" />
                       <Separator />
-                      <TimeDigit val={timeSorteo.seconds} label="s" />{" "}
-                      {/* <-- AQUI ESTABA FALTANDO */}
+                      <TimeDigit val={timeSorteo.seconds} label="s" />
                     </Stack>
                   )}
                 </Box>
@@ -380,7 +382,6 @@ export default function DashboardPage() {
             </Card>
           </Grid>
 
-          {/* CARD 2: INTERCAMBIO */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Card
               elevation={3}
@@ -454,7 +455,7 @@ export default function DashboardPage() {
           </Grid>
         </Grid>
 
-        {/* TARJETA DE MISIÓN (SI YA HUBO SORTEO) */}
+        {/* TARJETA DE MISIÓN */}
         {myAssignment && (
           <Box mb={6} sx={{ animation: "fadeIn 1s ease-in" }}>
             <Card
@@ -477,7 +478,7 @@ export default function DashboardPage() {
               >
                 <PersonSearch color="secondary" />
                 <Typography variant="h6" color="secondary" fontWeight="bold">
-                  ¡Misión Asignada! Tu amigo secreto es:
+                  ¡Misión Asignada! Debes regalar a:
                 </Typography>
               </Box>
               <CardContent>
@@ -663,7 +664,7 @@ export default function DashboardPage() {
             </Box>
           </Grid>
 
-          {/* BACKLOG DE EQUIPO */}
+          {/* BACKLOG DE EQUIPO - OFUSCADO */}
           <Grid size={{ xs: 12, md: 8 }}>
             <Stack direction="row" alignItems="center" gap={1} mb={3}>
               <CloudQueue sx={{ color: "#4A148C" }} />
@@ -671,9 +672,11 @@ export default function DashboardPage() {
                 Participantes ({groupedOtherWishes.length})
               </Typography>
             </Stack>
+
             {groupedOtherWishes.length === 0 && !loading && (
               <Alert severity="info">Nadie más se ha registrado aún.</Alert>
             )}
+
             {groupedOtherWishes.map((group, i) => (
               <Accordion
                 key={i}
@@ -710,18 +713,31 @@ export default function DashboardPage() {
                     {group.wishes.length > 0 ? (
                       group.wishes.map((w, idx) => (
                         <ListItem key={w.id}>
-                          <Lock
-                            fontSize="small"
-                            sx={{ mr: 2, color: "text.disabled" }}
-                          />
-                          <ListItemText
-                            primary="Deseo Secreto"
-                            secondary="Solo visible para su Amigo Secreto"
-                            primaryTypographyProps={{
-                              fontWeight: "bold",
-                              color: "text.secondary",
-                            }}
-                          />
+                          {/* SI EL DESEO ES NULL (OFUSCADO) MOSTRAMOS CANDADO, SI NO, EL TEXTO */}
+                          {w.description === null ? (
+                            <>
+                              <Lock
+                                fontSize="small"
+                                sx={{ mr: 2, color: "text.disabled" }}
+                              />
+                              <ListItemText
+                                primary="Deseo Secreto"
+                                secondary="Solo visible para su Amigo Secreto"
+                                primaryTypographyProps={{
+                                  fontWeight: "bold",
+                                  color: "text.secondary",
+                                }}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <CardGiftcard
+                                fontSize="small"
+                                sx={{ mr: 2, color: "secondary.main" }}
+                              />
+                              <ListItemText primary={w.description} />
+                            </>
+                          )}
                         </ListItem>
                       ))
                     ) : (

@@ -43,15 +43,55 @@ export default function LoginPage() {
   const [cedula, setCedula] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // 1. VERIFICAR SESIÓN AL CARGAR
+  // 1. VERIFICAR SESIÓN Y SOLUCIONAR REFRESH TOKEN
   useEffect(() => {
+    // Marcamos que el componente está montado en el cliente
     const checkSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        router.replace("/dashboard");
-      } else {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        // Si hay error (ej: Refresh Token Not Found), forzamos limpieza
+        if (error) {
+          console.warn("Sesión inválida, limpiando...", error.message);
+          await supabase.auth.signOut();
+          setCheckingSession(false);
+          return;
+        }
+
+        if (data.session) {
+          router.replace("/dashboard");
+        } else {
+          setCheckingSession(false);
+        }
+      } catch (err) {
+        // En caso de cualquier error raro, mostramos el login
+        setCheckingSession(false);
+      }
+    };
+    checkSession();
+  }, [router]); // 1. VERIFICAR SESIÓN Y SOLUCIONAR REFRESH TOKEN
+  useEffect(() => {
+    // Marcamos que el componente está montado en el cliente
+
+    const checkSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        // Si hay error (ej: Refresh Token Not Found), forzamos limpieza
+        if (error) {
+          console.warn("Sesión inválida, limpiando...", error.message);
+          await supabase.auth.signOut();
+          setCheckingSession(false);
+          return;
+        }
+
+        if (data.session) {
+          router.replace("/dashboard");
+        } else {
+          setCheckingSession(false);
+        }
+      } catch (err) {
+        // En caso de cualquier error raro, mostramos el login
         setCheckingSession(false);
       }
     };
@@ -70,6 +110,9 @@ export default function LoginPage() {
     try {
       if (isRegistering) {
         // --- VALIDACIÓN ---
+        if (!fullName.trim() || fullName.length < 3) {
+          throw new Error("Por favor, ingresa tu nombre completo.");
+        }
         if (!validarCedula(cedula)) {
           throw new Error("La cédula ingresada no es válida.");
         }
