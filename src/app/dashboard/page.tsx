@@ -477,7 +477,7 @@ export default function DashboardPage() {
               >
                 <PersonSearch color="secondary" />
                 <Typography variant="h6" color="secondary" fontWeight="bold">
-                  ¡Misión Asignada! Debes regalar a:
+                  ¡Misión Asignada! Tu amigo secreto es:
                 </Typography>
               </Box>
               <CardContent>
