@@ -71,7 +71,7 @@ export async function POST(request: Request) {
           : "<li>¡Sorpréndeme! (No puso deseos)</li>";
 
       const emailTask = resend.emails.send({
-        from: "RaaS Xtrim <onboarding@resend.dev>", // Recuerda cambiar esto si verificas dominio
+        from: "RaaS Tu Amigo Secreto <santa@raas-xtr.online>", // Recuerda cambiar esto si verificas dominio
         to: santa.email,
         subject: `🎅 RaaS: ¡Te tocó regalar a ${recipient.full_name}!`,
         html: `
