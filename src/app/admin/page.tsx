@@ -1,36 +1,51 @@
-'use client';
-import { useState } from 'react';
-import { supabase } from '@/lib/supabase'; // Cliente público (para auth check)
+"use client";
+import { useState } from "react";
+import {
+  Box,
+  Container,
+  Typography,
+  Button,
+  Card,
+  CardContent,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  Chip,
+  Divider,
+  Paper,
+} from "@mui/material";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh"; // Varita mágica
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
 
   const handleRunSorteo = async () => {
-    if(!confirm("⚠️ ¿ESTÁS SEGURO? Esto enviará los correos a todos.")) return;
-    
+    if (!confirm("⚠️ ¿ESTÁS SEGURO? Esto enviará los correos a todos.")) return;
+
     setLoading(true);
     setLogs([]);
 
     try {
-      // Llamamos a nuestra propia API
-      const response = await fetch('/api/sorteo', {
-        method: 'POST',
+      const response = await fetch("/api/sorteo", {
+        method: "POST",
         headers: {
-          // OJO: Aquí deberías poner la clave que definimos en el backend
-          // PERO como estamos en el cliente, no podemos usar process.env.SERVICE_KEY.
-          // Para esta prueba rápida, te recomiendo poner la clave hardcodeada aquí solo para correrlo tú
-          // O configurar un input de password en esta pantalla.
-          'x-admin-secret': prompt("Ingresa la SERVICE ROLE KEY para autorizar:") || '' 
-        }
+          // Recuerda: En producción real esto no debe ir hardcodeado o prompt
+          "x-admin-secret":
+            prompt("Ingresa la SERVICE ROLE KEY para autorizar:") || "",
+        },
       });
 
       const data = await response.json();
       setLogs(data.matches || []);
-      
-      if(!response.ok) alert("Error: " + (data.error || 'Desconocido'));
-      else alert("¡Sorteo realizado con éxito! 🎅");
 
+      if (!response.ok) alert("Error: " + (data.error || "Desconocido"));
+      else alert("¡Sorteo realizado con éxito! 🎅");
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -39,54 +54,152 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#212121] via-[#4A148C] to-[#212121] text-white p-10">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-8">
-          <div className="inline-block bg-gradient-to-r from-[#6A1B9A] to-[#8E24AA] p-4 rounded-full mb-4">
-            <span className="text-5xl">🎅</span>
-          </div>
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">Panel de Administración</h1>
-          <p className="text-purple-300 text-sm">Sistema de Sorteo Navideño Xtrim</p>
-        </div>
-      
-        <div className="border-2 border-[#8E24AA] p-8 rounded-2xl bg-gradient-to-br from-[#4A148C]/50 to-[#6A1B9A]/30 backdrop-blur-sm shadow-2xl">
-          <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-lg p-4 mb-6">
-            <p className="text-yellow-300 text-sm flex items-center gap-2">
-              <span className="text-xl">⚠️</span>
-              <span>Ejecuta el sorteo solo cuando todos los participantes hayan completado su registro.</span>
-            </p>
-          </div>
-          
-          <button 
-            onClick={handleRunSorteo}
-            disabled={loading}
-            className="bg-gradient-to-r from-[#6A1B9A] to-[#8E24AA] hover:from-[#8E24AA] hover:to-[#6A1B9A] disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-5 px-8 rounded-xl text-xl w-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 active:scale-95"
+    <Box
+      sx={{
+        minHeight: "100vh",
+        background: "linear-gradient(135deg, #1a237e 0%, #311b92 100%)", // Gradiente oscuro elegante
+        py: 8,
+        color: "white",
+      }}
+    >
+      <Container maxWidth="md">
+        {/* Header */}
+        <Box textAlign="center" mb={6}>
+          <Box
+            sx={{
+              display: "inline-flex",
+              p: 2,
+              bgcolor: "rgba(255,255,255,0.1)",
+              borderRadius: "50%",
+              mb: 2,
+            }}
           >
-            {loading ? '✨ EJECUTANDO SORTEO...' : '🎄 EJECUTAR SORTEO Y ENVIAR EMAILS'}
-          </button>
-        </div>
+            <Typography variant="h2">🎅</Typography>
+          </Box>
+          <Typography
+            variant="h3"
+            fontWeight="bold"
+            sx={{ mb: 1, textShadow: "0px 4px 20px rgba(0,0,0,0.5)" }}
+          >
+            Panel de Administración
+          </Typography>
+          <Typography variant="subtitle1" sx={{ opacity: 0.8 }}>
+            Sistema de Sorteo Navideño Xtrim
+          </Typography>
+        </Box>
+
+        <Card
+          elevation={12}
+          sx={{ bgcolor: "rgba(255, 255, 255, 0.95)", mb: 4 }}
+        >
+          <CardContent sx={{ p: 4 }}>
+            <Alert
+              severity="warning"
+              icon={<WarningAmberIcon fontSize="inherit" />}
+              sx={{ mb: 4, borderRadius: 2 }}
+            >
+              <strong>Zona de Peligro:</strong> Ejecuta el sorteo solo cuando
+              todos los participantes hayan completado su registro (Viernes).
+            </Alert>
+
+            <Button
+              onClick={handleRunSorteo}
+              disabled={loading}
+              fullWidth
+              variant="contained"
+              color="secondary"
+              size="large"
+              startIcon={loading ? null : <AutoFixHighIcon />}
+              sx={{
+                py: 2,
+                fontSize: "1.2rem",
+                boxShadow: "0 8px 16px 0 rgba(0,0,0,0.2)",
+                background: "linear-gradient(45deg, #7b1fa2 30%, #512da8 90%)",
+              }}
+            >
+              {loading
+                ? "✨ Ejecutando Sorteo..."
+                : "Ejecutar Sorteo y Enviar Emails"}
+            </Button>
+          </CardContent>
+        </Card>
 
         {logs.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-2xl mb-4 font-bold text-purple-300 flex items-center gap-2">
-              📋 Log de Resultados
-              <span className="text-sm bg-green-500/20 text-green-300 px-3 py-1 rounded-full">
-                {logs.length} asignaciones
-              </span>
-            </h2>
-            <div className="bg-[#212121] border-2 border-[#8E24AA] p-6 rounded-xl h-96 overflow-auto shadow-xl">
-              {logs.map((log, i) => (
-                <div key={i} className="border-b border-purple-900/50 py-3 hover:bg-purple-900/20 transition-colors px-2 rounded">
-                  <span className="text-green-400 font-semibold">🎅 {log.santa}</span> 
-                  <span className="text-purple-300"> → regala a → </span>
-                  <span className="text-yellow-300 font-semibold">🎁 {log.recipient}</span>
-                  <span className="float-right text-xs bg-[#6A1B9A] text-white px-3 py-1 rounded-full">{log.emailStatus}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <Box sx={{ animation: "fadeIn 0.5s ease-in" }}>
+            <Box
+              display="flex"
+              alignItems="center"
+              justifyContent="space-between"
+              mb={2}
+            >
+              <Typography variant="h5" fontWeight="bold">
+                📋 Log de Resultados
+              </Typography>
+              <Chip label={`${logs.length} asignaciones`} color="success" />
+            </Box>
+
+            <Paper
+              elevation={4}
+              sx={{
+                maxHeight: 500,
+                overflow: "auto",
+                bgcolor: "#212121",
+                color: "white",
+                borderRadius: 2,
+              }}
+            >
+              <List>
+                {logs.map((log, i) => (
+                  <div key={i}>
+                    <ListItem>
+                      <ListItemText
+                        primary={
+                          <Box
+                            display="flex"
+                            alignItems="center"
+                            gap={1}
+                            flexWrap="wrap"
+                          >
+                            <Typography color="success.light" fontWeight="bold">
+                              🎅 {log.santa}
+                            </Typography>
+                            <ArrowForwardIcon
+                              sx={{ color: "grey.500", fontSize: 16 }}
+                            />
+                            <Typography color="warning.light" fontWeight="bold">
+                              🎁 {log.recipient}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                      <Chip
+                        size="small"
+                        icon={
+                          log.emailStatus === "Sent" ? (
+                            <CheckCircleIcon />
+                          ) : (
+                            <ErrorIcon />
+                          )
+                        }
+                        label={log.emailStatus}
+                        color={log.emailStatus === "Sent" ? "success" : "error"}
+                        variant="outlined"
+                        sx={{
+                          borderColor: "rgba(255,255,255,0.3)",
+                          color: "white",
+                        }}
+                      />
+                    </ListItem>
+                    {i < logs.length - 1 && (
+                      <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+                    )}
+                  </div>
+                ))}
+              </List>
+            </Paper>
+          </Box>
         )}
-      </div>
-    </div>
+      </Container>
+    </Box>
   );
 }
