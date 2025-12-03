@@ -125,7 +125,7 @@ export default function AdminPage() {
   };
 
   const handleRunSorteo = async () => {
-    if (!confirm("⚠️ ¿Ejecutar sorteo? Se enviarán correos a todos.")) return;
+    if (!confirm("⚠️ ¿Ejecutar sorteo? Se enviarán correos a todos.!")) return;
     setLoading(true);
     try {
       const response = await fetch("/api/sorteo", {
