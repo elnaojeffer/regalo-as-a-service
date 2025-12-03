@@ -111,7 +111,7 @@ export async function POST(request: Request) {
               </div>
             </div>
              <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #999;">
-              Powered by Xtrim Dev Team
+              Powered by elñaojeffer
             </div>
           </div>
         `,

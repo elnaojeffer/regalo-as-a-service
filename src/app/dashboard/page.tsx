@@ -25,9 +25,9 @@ import {
   Paper,
   Stack,
   Divider,
-  CircularProgress,
+  Alert,
 } from "@mui/material";
-import Grid from "@mui/material/Grid"; // Asegúrate de usar Grid2 si estás en MUI v6
+import Grid from "@mui/material/Grid";
 import {
   ExpandMore,
   Delete,
@@ -38,10 +38,13 @@ import {
   Event,
   Celebration,
   Settings,
+  Lock,
+  Visibility,
+  PersonSearch,
 } from "@mui/icons-material";
 import confetti from "canvas-confetti";
 
-// Valores por defecto (mientras carga la BD)
+// Valores por defecto
 const DEFAULT_SORTEO = new Date("2025-12-05T15:00:00");
 const DEFAULT_INTERCAMBIO = new Date("2025-12-23T14:00:00");
 
@@ -61,23 +64,32 @@ interface GroupedWishes {
   };
 }
 
+// Interfaz para la asignación (Tu amigo secreto)
+interface Assignment {
+  recipient: {
+    full_name: string;
+    sede: string;
+    wishes: { description: string }[];
+  };
+}
+
 export default function DashboardPage() {
   const router = useRouter();
 
-  // Estados de Datos
+  // Estados
   const [wishes, setWishes] = useState<WishItem[]>([]);
   const [newWish, setNewWish] = useState("");
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  // NUEVO ESTADO PARA CONTROLAR LA HIDRATACIÓN
-  const [mounted, setMounted] = useState(false);
-  // Configuración Dinámica
   const [configAdminEmail, setConfigAdminEmail] = useState("");
+
+  // Estado de Asignación (Si ya hubo sorteo)
+  const [myAssignment, setMyAssignment] = useState<Assignment | null>(null);
+
+  // Fechas y Timers
   const [dateSorteo, setDateSorteo] = useState<Date>(DEFAULT_SORTEO);
   const [dateIntercambio, setDateIntercambio] =
     useState<Date>(DEFAULT_INTERCAMBIO);
-
-  // Estados de Contadores
   const [timeSorteo, setTimeSorteo] = useState({
     days: 0,
     hours: 0,
@@ -93,15 +105,10 @@ export default function DashboardPage() {
     finished: false,
   });
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // --- 1. CARGA UNIFICADA (Seguridad + Config + Datos) ---
+  // --- 1. CARGA INICIAL ---
   useEffect(() => {
     const initData = async () => {
       try {
-        // A. Verificar Sesión
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -109,11 +116,11 @@ export default function DashboardPage() {
           router.replace("/");
           return;
         }
-        setCurrentUser(session.user);
+        const user = session.user;
+        setCurrentUser(user);
 
-        // B. Cargar Configuración (Admin y Fechas)
+        // Cargar Config
         const { data: configData } = await supabase.from("config").select("*");
-
         if (configData) {
           const adminCfg = configData.find((c) => c.key === "admin_email");
           const sorteoCfg = configData.find((c) => c.key === "fecha_sorteo");
@@ -127,8 +134,29 @@ export default function DashboardPage() {
             setDateIntercambio(new Date(intercambioCfg.value));
         }
 
-        // C. Cargar Deseos
+        // Cargar Deseos Generales
         await fetchWishes();
+
+        // INTENTAR CARGAR MI ASIGNACIÓN (Si el sorteo ya pasó)
+        // Buscamos en la tabla matches donde yo soy el santa
+        const { data: matchData } = await supabase
+          .from("matches")
+          .select(
+            `
+            recipient:recipient_id (
+              full_name,
+              sede,
+              wishes ( description )
+            )
+          `
+          )
+          .eq("santa_id", user.id)
+          .single();
+
+        if (matchData) {
+          setMyAssignment(matchData as any); // Guardamos la asignación si existe
+        }
+
         setLoading(false);
       } catch (error) {
         console.error(error);
@@ -147,7 +175,6 @@ export default function DashboardPage() {
     return () => clearInterval(timer);
   }, [dateSorteo, dateIntercambio]);
 
-  // Helpers
   const calculateTimeLeft = (target: Date) => {
     const now = new Date();
     const diff = target.getTime() - now.getTime();
@@ -170,7 +197,7 @@ export default function DashboardPage() {
     if (data) setWishes(data);
   };
 
-  // Handlers
+  // --- HANDLERS ---
   const handleAddWish = async () => {
     if (!newWish.trim() || !currentUser) return;
     const myCount = wishes.filter((w) => w.user_id === currentUser.id).length;
@@ -204,7 +231,7 @@ export default function DashboardPage() {
     router.push("/");
   };
 
-  // Memos
+  // --- AGRUPACIÓN ---
   const myWishes = useMemo(
     () => wishes.filter((w) => w.user_id === currentUser?.id),
     [wishes, currentUser]
@@ -213,6 +240,9 @@ export default function DashboardPage() {
   const groupedOtherWishes = useMemo(() => {
     const groups: GroupedWishes = {};
     wishes.forEach((wish) => {
+      // Excluirme a mí mismo de la lista general para no confundir
+      if (wish.user_id === currentUser?.id) return;
+
       if (!groups[wish.user_id]) {
         groups[wish.user_id] = {
           name: wish.profiles.full_name,
@@ -236,22 +266,7 @@ export default function DashboardPage() {
     </Box>
   );
 
-  if (loading || !mounted) {
-    // 👈 Agregado !mounted
-    return (
-      <Box
-        sx={{
-          minHeight: "100vh",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          bgcolor: "#f4f6f8",
-        }}
-      >
-        <CircularProgress size={60} thickness={4} />
-      </Box>
-    );
-  }
+  if (loading) return null;
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#F5F5F5" }}>
@@ -273,8 +288,6 @@ export default function DashboardPage() {
           >
             {currentUser?.user_metadata?.full_name}
           </Typography>
-
-          {/* BOTÓN ADMIN DINÁMICO: Solo si el email coincide con la BD */}
           {currentUser?.email === configAdminEmail && (
             <IconButton
               onClick={() => router.push("/admin")}
@@ -283,7 +296,6 @@ export default function DashboardPage() {
               <Settings />
             </IconButton>
           )}
-
           <IconButton onClick={handleLogout} sx={{ color: "white" }}>
             <Logout />
           </IconButton>
@@ -291,9 +303,8 @@ export default function DashboardPage() {
       </AppBar>
 
       <Container maxWidth="lg" sx={{ mt: 4, pb: 8 }}>
-        {/* TIMELINE */}
+        {/* TIMELINE (Igual que antes) */}
         <Grid container spacing={2} sx={{ mb: 6 }}>
-          {/* CARD SORTEO */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Card
               elevation={3}
@@ -332,13 +343,7 @@ export default function DashboardPage() {
                     El Sorteo 🎲
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                    {dateSorteo.toLocaleDateString("es-ES", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {dateSorteo.toLocaleDateString()}
                   </Typography>
                 </Box>
                 <Box
@@ -367,7 +372,6 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </Grid>
-          {/* CARD INTERCAMBIO */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Card
               elevation={3}
@@ -406,13 +410,7 @@ export default function DashboardPage() {
                     Intercambio 🎁
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                    {dateIntercambio.toLocaleDateString("es-ES", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {dateIntercambio.toLocaleDateString()}
                   </Typography>
                 </Box>
                 <Box
@@ -443,12 +441,107 @@ export default function DashboardPage() {
           </Grid>
         </Grid>
 
-        {/* RESTO DE LA INTERFAZ (Listas de deseos) - Se mantiene igual */}
-        <Grid container spacing={4}>
-          {/* ... Misma lógica de Mi Carta y Lista de Equipo ... */}
-          {/* (Omití el resto del JSX repetitivo para ahorrar espacio, 
-               pero debes dejar el Grid container, la columna izquierda y derecha tal cual estaba) */}
+        {/* --- TARJETA DE MISIÓN (SOLO APARECE SI HAY SORTEO) --- */}
+        {myAssignment && (
+          <Box mb={6} sx={{ animation: "fadeIn 1s ease-in" }}>
+            <Card
+              elevation={6}
+              sx={{
+                border: "2px solid #8E24AA",
+                borderRadius: 4,
+                overflow: "hidden",
+              }}
+            >
+              <Box
+                sx={{
+                  bgcolor: "#F3E5F5",
+                  p: 2,
+                  borderBottom: "1px solid #E1BEE7",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                }}
+              >
+                <PersonSearch color="secondary" />
+                <Typography variant="h6" color="secondary" fontWeight="bold">
+                  ¡Misión Asignada! Debes regalar a:
+                </Typography>
+              </Box>
+              <CardContent>
+                <Grid container spacing={4} alignItems="center">
+                  <Grid size={{ xs: 12, md: 4 }} textAlign="center">
+                    <Avatar
+                      sx={{
+                        width: 80,
+                        height: 80,
+                        fontSize: 40,
+                        bgcolor: "#6A1B9A",
+                        margin: "0 auto",
+                        mb: 2,
+                      }}
+                    >
+                      {myAssignment.recipient.full_name.charAt(0)}
+                    </Avatar>
+                    <Typography variant="h4" fontWeight="bold" color="primary">
+                      {myAssignment.recipient.full_name}
+                    </Typography>
+                    <Chip
+                      label={myAssignment.recipient.sede}
+                      sx={{
+                        mt: 1,
+                        bgcolor: "#E1BEE7",
+                        color: "#4A148C",
+                        fontWeight: "bold",
+                      }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 8 }}>
+                    <Box
+                      sx={{
+                        bgcolor: "#FAFAFA",
+                        p: 3,
+                        borderRadius: 3,
+                        border: "1px dashed #BDBDBD",
+                      }}
+                    >
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight="bold"
+                        mb={2}
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
+                      >
+                        <Visibility fontSize="small" color="disabled" /> Sus
+                        Deseos Revelados:
+                      </Typography>
+                      {myAssignment.recipient.wishes.length > 0 ? (
+                        <List dense>
+                          {myAssignment.recipient.wishes.map((w, i) => (
+                            <ListItem key={i}>
+                              <CardGiftcard color="secondary" sx={{ mr: 2 }} />
+                              <ListItemText
+                                primary={w.description}
+                                primaryTypographyProps={{ fontSize: "1.1rem" }}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      ) : (
+                        <Typography color="text.secondary" fontStyle="italic">
+                          Esta persona no registró deseos. ¡Sorpréndela!
+                        </Typography>
+                      )}
+                    </Box>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Box>
+        )}
 
+        <Grid container spacing={4}>
+          {/* COLUMNA IZQUIERDA: MI CARTA */}
           <Grid size={{ xs: 12, md: 4 }}>
             <Box sx={{ position: "sticky", top: 100 }}>
               <Card elevation={4} sx={{ borderRadius: 4, overflow: "visible" }}>
@@ -557,14 +650,19 @@ export default function DashboardPage() {
             </Box>
           </Grid>
 
+          {/* COLUMNA DERECHA: BACKLOG (CENSURADO) */}
           <Grid size={{ xs: 12, md: 8 }}>
-            {/* Acordeones del equipo (Mismo código anterior) */}
             <Stack direction="row" alignItems="center" gap={1} mb={3}>
               <CloudQueue sx={{ color: "#4A148C" }} />
               <Typography variant="h5" fontWeight="bold">
-                Backlog de Regalos
+                Participantes ({groupedOtherWishes.length})
               </Typography>
             </Stack>
+
+            {groupedOtherWishes.length === 0 && !loading && (
+              <Alert severity="info">Nadie más se ha registrado aún.</Alert>
+            )}
+
             {groupedOtherWishes.map((group, i) => (
               <Accordion
                 key={i}
@@ -586,19 +684,43 @@ export default function DashboardPage() {
                   >
                     {group.name.charAt(0)}
                   </Avatar>
-                  <Typography fontWeight="bold" sx={{ flexGrow: 1 }}>
-                    {group.name}
-                  </Typography>
-                  <Chip label={group.sede} size="small" />
+                  <Box flexGrow={1}>
+                    <Typography fontWeight="bold">{group.name}</Typography>
+                    {/* Indicador de cuántos deseos ha subido */}
+                    <Typography variant="caption" color="text.secondary">
+                      {group.wishes.length > 0
+                        ? `${group.wishes.length} deseos guardados`
+                        : "Sin deseos aún"}
+                    </Typography>
+                  </Box>
+                  <Chip label={group.sede} size="small" variant="outlined" />
                 </AccordionSummary>
-                <AccordionDetails>
+
+                <AccordionDetails sx={{ bgcolor: "#FAFAFA" }}>
                   <List>
-                    {group.wishes.map((w) => (
-                      <ListItem key={w.id}>
-                        <CardGiftcard fontSize="small" sx={{ mr: 2 }} />
-                        <ListItemText primary={w.description} />
-                      </ListItem>
-                    ))}
+                    {group.wishes.length > 0 ? (
+                      group.wishes.map((w, idx) => (
+                        <ListItem key={w.id}>
+                          {/* ÍCONO DE CANDADO PARA CENSURAR */}
+                          <Lock
+                            fontSize="small"
+                            sx={{ mr: 2, color: "text.disabled" }}
+                          />
+                          <ListItemText
+                            primary="Deseo Secreto"
+                            secondary="Solo visible para su Amigo Secreto"
+                            primaryTypographyProps={{
+                              fontWeight: "bold",
+                              color: "text.secondary",
+                            }}
+                          />
+                        </ListItem>
+                      ))
+                    ) : (
+                      <Typography variant="caption" color="text.disabled" p={2}>
+                        Este usuario aún no agrega deseos.
+                      </Typography>
+                    )}
                   </List>
                 </AccordionDetails>
               </Accordion>

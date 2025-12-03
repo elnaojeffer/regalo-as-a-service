@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { validarCedula } from "@/lib/utils"; // ⚠️ Asegúrate de tener este archivo
 import {
   Box,
   Card,
@@ -23,19 +24,27 @@ import {
   VisibilityOff,
   PersonAdd,
   Login,
+  Badge, // Icono para la cédula
 } from "@mui/icons-material";
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false); // Estado para alternar vistas
+  const [isRegistering, setIsRegistering] = useState(false);
 
   // Estados del formulario
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [sede, setSede] = useState("UIO");
+  const [cedula, setCedula] = useState(""); // <--- NUEVO
   const [showPassword, setShowPassword] = useState(false);
+
+  // Helper para solo números en la cédula
+  const handleCedulaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^0-9]/g, ""); // Solo permite números
+    if (value.length <= 10) setCedula(value);
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,18 +52,32 @@ export default function LoginPage() {
 
     try {
       if (isRegistering) {
+        // --- VALIDACIÓN CÉDULA ---
+        if (!validarCedula(cedula)) {
+          throw new Error("La cédula ingresada no es válida.");
+        }
+
         // --- LÓGICA DE REGISTRO ---
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { full_name: fullName, sede: sede },
+            // Enviamos la cédula también
+            data: { full_name: fullName, sede: sede, cedula: cedula },
             emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
-        if (error) throw error;
+
+        if (error) {
+          // Detectar duplicados de cédula
+          if (error.message.includes("unique") || error.status === 422) {
+            throw new Error("Esta cédula o correo ya están registrados.");
+          }
+          throw error;
+        }
+
         alert("¡Cuenta creada! Revisa tu correo o inicia sesión.");
-        setIsRegistering(false); // Volver al login tras registro exitoso
+        setIsRegistering(false);
       } else {
         // --- LÓGICA DE LOGIN ---
         const { error } = await supabase.auth.signInWithPassword({
@@ -118,7 +141,7 @@ export default function LoginPage() {
               noValidate
               sx={{ mt: 1 }}
             >
-              {/* CAMPOS SOLO PARA REGISTRO (Animados) */}
+              {/* CAMPOS SOLO PARA REGISTRO */}
               <Collapse in={isRegistering}>
                 <Box
                   sx={{
@@ -136,6 +159,31 @@ export default function LoginPage() {
                     onChange={(e) => setFullName(e.target.value)}
                     size="small"
                   />
+
+                  {/* --- CAMPO CÉDULA NUEVO --- */}
+                  <TextField
+                    required={isRegistering}
+                    fullWidth
+                    label="Cédula / DNI"
+                    placeholder="10 dígitos"
+                    value={cedula}
+                    onChange={handleCedulaChange}
+                    size="small"
+                    error={cedula.length === 10 && !validarCedula(cedula)}
+                    helperText={
+                      cedula.length === 10 && !validarCedula(cedula)
+                        ? "Cédula inválida"
+                        : ""
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Badge fontSize="small" color="action" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+
                   <TextField
                     select
                     required={isRegistering}
